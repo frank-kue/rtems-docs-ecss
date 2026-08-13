@@ -64,6 +64,8 @@ detail later):
 
 Finally, performance and memory benchmarks may be needed.
 
+(QualEngOverviewExamples)=
+
 ```{admonition} Examples
 Examples of already pre-qualified function groups are often helpful.
 
@@ -533,7 +535,30 @@ invokes the `specwareexport` tool internally, see {ref}`ToolSpecwareexport`.
 
 ## Add test cases to test suites
 
-TODO
+A generated validation test case is not built or run until its `.c` file is
+added to the `source:` list of a test-program build item under
+`spec/build/testsuites/validation`; see the
+{ref}`examples in the overview <QualEngOverviewExamples>`. For example, after
+working through {ref}`ActionRequirements`,
+`testsuites/validation/tc-timer-create.c` exists but is not yet part of any
+suite. Adding it to the `source:` list of
+`spec/build/testsuites/validation/validation-no-clock-0.yml`, next to the other
+`tc-timer-*.c` entries, is what actually compiles and runs it:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+- testsuites/validation/tc-timer-create.c
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ```{admonition} Selecting the right Validation Test Suite
 Not all test cases of a function group need to be part of the same test
@@ -545,7 +570,72 @@ execution, others may need exactly one CPU, others at least three.
 
 ## Create a test suite
 
-TODO
+Create a new test suite only when none of the existing ones give the test
+executable the resources, or restrictions, it needs, see the admonition above.
+A test suite is defined by a pair of specification items that share the same
+name, for example `validation-one-cpu-0`:
+
+- `spec/testsuites/$${my-suite}.yml` (`type: test-suite`) generates the suite's
+  main C file, named by its `test-target` attribute,
+  `testsuites/validation/ts-$${my-suite}.c`. Its `test-code` attribute is a
+  short `main`-like body: a handful of `#define CONFIGURE_...` options followed
+  by `#include "ts-default.h"`. For example,
+  `spec/testsuites/validation-no-clock-0.yml` defines
+  `CONFIGURE_APPLICATION_DOES_NOT_NEED_CLOCK_DRIVER`, while
+  `spec/testsuites/validation-one-cpu-0.yml` instead limits
+  `CONFIGURE_MAXIMUM_PROCESSORS` to `1`; the two items differ only in these
+  `#define` lines.
+
+- `spec/build/testsuites/validation/$${my-suite}.yml`
+  (`build-type: test-program`) is the matching build item. Its `source:` list
+  starts with only the generated `ts-$${my-suite}.c`; add test case files to it
+  the same way as in the previous section. Its `target` attribute names the
+  executable, `testsuites/validation/ts-$${my-suite}.exe`.
+
+The easiest way to create both is to copy an existing pair, then adjust the
+copies:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+$ cp spec/testsuites/validation-no-clock-0.yml \
+    spec/testsuites/$${my-suite}.yml
+$ cp spec/build/testsuites/validation/validation-no-clock-0.yml \
+    spec/build/testsuites/validation/$${my-suite}.yml
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Adjust the `test-brief`, `test-description`, and `#define` lines in
+`spec/testsuites/$${my-suite}.yml`, and clear the `source:` list in
+`spec/build/testsuites/validation/$${my-suite}.yml` down to only the generated
+`ts-$${my-suite}.c`.
+
+A new suite is not built until it is linked in as a `build-dependency` of
+`spec/build/testsuites/validation/grp.yml`:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+- role: build-dependency
+  uid: $${my-suite}
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ## Compile and run the tests
 
