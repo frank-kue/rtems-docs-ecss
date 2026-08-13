@@ -233,9 +233,81 @@ That item must reuse the exact identifier chosen here.
 
 ## Add a function to the pre-qualified subset
 
-We will prepare this for you.
+Whether a `.c` or `.h` file is compiled into the pre-qualified subset or into
+full, unqualified RTEMS is decided entirely by which specification item lists
+it, not by anything in the file itself. The `RTEMS_QUAL` build option selects
+between the two, set to `True` in the BSP variant's section (for example,
+`[sparc/leon3]`) of the `config.ini` file passed to `./waf configure`: when it
+is enabled, only files that are listed unconditionally are built; when it is
+disabled, those files are built together with everything else. A file listed in
+an item whose `enabled-by` attribute negates `RTEMS_QUAL` is therefore only
+built for full, unqualified RTEMS and is not, or not yet, part of the
+pre-qualified subset; a file listed without that condition is always built and
+is part of it.
 
-TODO
+For `cpukit`, this split is visible in a pair of specification items:
+
+- `spec/build/cpukit/librtemscpu.yml` defines the content of the library
+  `librtemscpu.a`, and lists, unconditionally, the source and header files that
+  belong to the pre-qualified subset. It also links, as `build-dependency`, to
+  a number of smaller items for optional features that contribute further
+  object files to the same library; some of those are unconditional too, and
+  some are split the same way as `cpukit` itself.
+
+- `spec/build/cpukit/objextra.yml` lists everything not, or not yet, part of
+  the pre-qualified subset, guarded by an `enabled-by` attribute that negates
+  `RTEMS_QUAL`. A feature can keep its own, smaller such item instead of using
+  `objextra.yml` directly; for example, `spec/build/cpukit/objsmpextra.yml`
+  holds the SMP support files that are not yet pre-qualified, guarded the same
+  way, and is a `build-dependency` of `spec/build/cpukit/objsmp.yml`, which
+  holds the SMP support files that already are.
+
+Since a publicly visible RTEMS function usually has its own `.c` file, adding
+it to the pre-qualified subset is usually just moving its one `source:` entry
+from `objextra.yml`, or the matching feature-specific item, to
+`librtemscpu.yml`, keeping the list in alphabetical order like its neighbours.
+If the function's declaration is not installed unconditionally yet either, move
+the matching `install:` entry the same way. For example,
+`cpukit/rtems/src/taskinitusers.c` moved from `objextra.yml`'s `source:` list
+to `librtemscpu.yml`'s in a single-line change.
+
+Two complications can turn this into more than a one-line move:
+
+1. **A file mixes pre-qualified and not-yet-pre-qualified code.** A whole file
+   can only be built or excluded as a unit, so such a file must be split, or
+   handled some other way, before any of it can be moved. If in doubt, ask us
+   (embedded brains).
+
+2. **The function calls into a file that is not yet in the subset.** This
+   typically happens when an API function in `cpukit/rtems/src` calls a helper
+   function implemented in `cpukit/score`, the Score (Super Core), that has not
+   been pre-qualified yet. In that case, move all of the files involved
+   together, and all of them must eventually be pre-qualified as well. For
+   example, the Rate Monotonic Manager statistics functions
+   `cpukit/rtems/src/ratemongetstatistics.c`,
+   `cpukit/rtems/src/ratemonreportstatistics.c`,
+   `cpukit/rtems/src/ratemonresetall.c`, and
+   `cpukit/rtems/src/ratemonresetstatistics.c` moved into `librtemscpu.yml`
+   together with `cpukit/score/src/timespecdividebyinteger.c`, since
+   `ratemonreportstatistics.c` calls `_Timespec_Divide_by_integer()`.
+
+To find out where a `.c` or `.h` file currently lives, search for its name
+across the whole build specification:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+$ grep -rl taskinitusers.c spec/build
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ## Create a specification directory tree
 
