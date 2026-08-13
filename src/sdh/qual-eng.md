@@ -154,9 +154,82 @@ $ git checkout -b $${my-new-branch-name} eb/next
 
 ## Add Doxygen groups
 
-We will prepare this for you.
+A [Doxygen group](https://www.doxygen.nl/manual/grouping.html) collects a set
+of related declarations under one identifier, independent of the files in which
+they live. RTEMS uses two such groups per manager, or per part of a manager: an
+*API group* for its publicly visible functions and macros, and an
+*implementation group* for the internal data structures and helper functions
+behind them. Groups nest through `@ingroup`, so an implementation group points
+at its parent implementation group and an API group points at its parent API
+group, mirroring the software architecture down to the Classic API, POSIX API,
+or Score component level.
 
-TODO
+Doxygen groups matter for qualification because the group a source element
+belongs to, together with a link into the generated Doxygen
+@{/glossary/html:/term} output (the @{/glossary/sdd:/term}), is recorded in a
+Doxygen *tagfile*. That tagfile is what lets the traceability matrices in the
+@{/glossary/icd:/term} and the @{/glossary/srs:/term} be built and checked
+automatically, complete with working links into the @{/glossary/sdd:/term}. A
+function or macro that is not in a group cannot be traced this way, so it
+cannot be pre-qualified.
+
+Before adding anything new, check whether suitable groups already exist for the
+functions and macros you are pre-qualifying; most Classic and POSIX API
+managers already have both. The Rate Monotonic Manager is a complete example to
+study:
+
+- `cpukit/include/rtems/rtems/ratemon.h` defines the API group once with
+  `@defgroup RTEMSAPIClassicRatemon`, then tags each public function and type
+  individually with `@ingroup RTEMSAPIClassicRatemon`.
+
+- `cpukit/include/rtems/rtems/ratemonimpl.h` defines the implementation group
+  with `@defgroup RTEMSImplClassicRateMonotonic`, and wraps every declaration
+  that belongs to it between `@@{` and `@}` so the declarations do not each
+  need their own `@ingroup`:
+
+  ```{raw} latex
+  \begin{footnotesize}
+  ```
+
+  ```{code-block} c
+  ---
+  linenos:
+  ---
+  /**
+   * @defgroup RTEMSImplClassicRateMonotonic Rate Monotonic Manager
+   *
+   * @ingroup RTEMSImplClassic
+   *
+   * @brief This group contains the Rate Monotonic Manager implementation.
+   *
+   * @@{
+   */
+
+  /* ... declarations belonging to the group ... */
+
+  /**@}*/
+  ```
+
+  ```{raw} latex
+  \end{footnotesize}
+  ```
+
+- Every `.c` file that implements part of the manager, for example
+  `cpukit/rtems/src/ratemoncreate.c`, cannot be nested inside that `@@{ @}`
+  block, so it tags itself with `@ingroup RTEMSImplClassicRateMonotonic` in its
+  own `@file` doc comment instead.
+
+If no group exists yet for your functions, add one the same way: pick an
+identifier that follows the pattern of its neighbours (`RTEMSAPI...` for an API
+group, `RTEMSImpl...` for an implementation group), give it a `@brief`, and
+`@ingroup` it under the closest existing parent group. Use `@ref <GroupID>` to
+refer to a group from surrounding prose, as `ratemonimpl.h` does in its own
+file brief.
+
+Choose the identifier carefully: a later step in this workflow creates a
+requirement item that names the implementation group as its `identifier`, for
+example `spec/rtems/ratemon/req/group.yml` for `RTEMSImplClassicRateMonotonic`.
+That item must reuse the exact identifier chosen here.
 
 ## Add a function to the pre-qualified subset
 
