@@ -311,19 +311,107 @@ $ grep -rl taskinitusers.c spec/build
 
 ## Create a specification directory tree
 
-We will prepare this for you.
+For the function group you are pre-qualifying, create a specification directory
+tree of `.yml` files under `spec/rtems`, named after the group, for example
+`spec/rtems/ratemon` for the Rate Monotonic Manager used as the running example
+throughout this chapter. At this point, only create the next directory level
+down, as empty directories; the sections that follow fill them with content.
 
-TODO
-
-```{admonition} Content of spec-directory
-(for example `spec/rtems/ratemon/*`)
-TODO
+```{raw} latex
+\begin{footnotesize}
 ```
+
+```{code-block} none
+---
+linenos:
+---
+$ mkdir -p spec/rtems/$${my-group}/if spec/rtems/$${my-group}/req \
+    spec/rtems/$${my-group}/val
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Only `if/`, `req/`, and `val/` are mandatory: every group needs at least an
+interface, a requirement, and a validation test. `constraint/` and `glossary/`
+are optional; add them only when you need them.
+
+````{admonition} Directory tree of a fully pre-qualified group
+`spec/rtems/ratemon` already went through every step of this workflow.
+Shortened to a few representative files, it looks like this:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+spec/rtems/ratemon/
+├── constraint/
+│   └── max.yml
+├── glossary/
+│   ├── job.yml
+│   ├── ownertask.yml
+│   └── ... (14 more terms)
+├── if/
+│   ├── header.yml
+│   ├── create.yml
+│   ├── period.yml
+│   └── ... (18 more interface items)
+├── req/
+│   ├── group.yml
+│   ├── create.yml
+│   ├── ident.yml
+│   ├── timeout.yml
+│   └── ... (11 more requirements)
+└── val/
+    ├── ident.yml
+    ├── mem-period.yml
+    ├── mem-period-del.yml
+    └── ratemon.yml
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+````
+
+- **`if/`** holds interface items: one YAML file per publicly visible function,
+  macro, type, or enumerator, plus one for the header file itself. See
+  {ref}`InterfaceItems`.
+
+- **`req/`** holds requirement items, see {ref}`QualEngWriteRequirements`. Most
+  are *action requirements*: a requirement broken into pre-conditions and
+  post-conditions with a transition-map relating them, from which the C test
+  file and most of its test logic are generated automatically; see
+  {ref}`ActionRequirements`. A requirement can instead be a short, simple
+  requirement text whose test is written by hand in `val/`, or a non-functional
+  requirement, like the Doxygen implementation group requirement added earlier
+  in this chapter or a memory-usage benchmark.
+
+- **`val/`** holds the hand-written tests for simple requirements and the
+  memory-usage benchmarks for non-functional requirements in `req/`. Action
+  requirements do not need a file here: their test code already lives inside
+  the `req/` item itself and is generated from it. See
+  {ref}`QualEngWriteSimpleValidationTests`.
+
+- **`constraint/`** holds short, reusable statements of a usage constraint, for
+  example a configurable maximum, that an interface item in `if/` can reference
+  through a `constraint` link.
+
+- **`glossary/`** holds short definitions of terms specific to this group,
+  referenced from `req/` and other texts the same way as the project-wide
+  glossary, for example `$${../glossary/job:/term}`.
 
 ## Create interface specifications
 
 See {ref}`InterfaceItems`, which walks through writing an interface
 specification item from scratch.
+
+(QualEngWriteRequirements)=
 
 ## Write requirements
 
@@ -356,6 +444,8 @@ Unit and Integration Test Plan (SUITP), Software Validation Specification
 {ref}`ActionRequirements` covers how to write the requirement YAML files for
 the action requirement case.
 ```
+
+(QualEngWriteSimpleValidationTests)=
 
 ## Write simple validation tests
 
