@@ -17,14 +17,15 @@ detail later):
 
 1. Create a new feature branch for your work.
 
-2. Put all functions and macros visible in the API in Doxygen groups.
+2. Put all functions and macros visible in the @`/glossary/api:/term` in
+   Doxygen groups.
 
 3. Add all functions and code needed to the pre-qualified API subset.
 
 4. Create a specification directory tree for this function group. In the next
-   steps, you will create YAML files in these directories. These YAML files
-   will contain the function specification, the requirements and the validation
-   tests.
+   steps, you will create @`/glossary/yaml:/term` files in these directories.
+   These YAML files will contain the function specification, the requirements
+   and the validation tests.
 
 5. Write or generate interface specifications. The result is a YAML file for
    each publicly visible API function or macro describing the function, its
@@ -63,6 +64,8 @@ detail later):
    are reached.
 
 Finally, performance and memory benchmarks may be needed.
+
+(QualEngOverviewExamples)=
 
 ```{admonition} Examples
 Examples of already pre-qualified function groups are often helpful.
@@ -145,7 +148,7 @@ A feature branch to accumulate all your changes is typically created like this:
 ---
 linenos:
 ---
-$ git checkout -b $${my-new-branch-name} eb/next
+$ git checkout -b $${MY_NEW_BRANCH_NAME} eb/next
 ```
 
 ```{raw} latex
@@ -154,31 +157,271 @@ $ git checkout -b $${my-new-branch-name} eb/next
 
 ## Add Doxygen groups
 
-We will prepare this for you.
+A [Doxygen group](https://www.doxygen.nl/manual/grouping.html) collects a set
+of related declarations under one identifier, independent of the files in which
+they live. @`/glossary/rtems:/term` uses two such groups per manager, or per
+part of a manager: an *API group* for its publicly visible functions and
+macros, and an *implementation group* for the internal data structures and
+helper functions behind them. Groups nest through `@ingroup`, so an
+implementation group points at its parent implementation group and an API group
+points at its parent API group, mirroring the software architecture down to the
+Classic API, @`/glossary/posix:/term` API, or Score component level.
 
-TODO
+Doxygen groups matter for qualification because the group a source element
+belongs to, together with a link into the generated Doxygen
+@`/glossary/html:/term` output (the @`/glossary/sdd:/term`), is recorded in a
+Doxygen *tagfile*. That tagfile is what lets the traceability matrices in the
+@`/glossary/icd:/term` and the @`/glossary/srs:/term` be built and checked
+automatically, complete with working links into the SDD. A function or macro
+that is not in a group cannot be traced this way, so it cannot be
+pre-qualified.
+
+Before adding anything new, check whether suitable groups already exist for the
+functions and macros you are pre-qualifying; most Classic and POSIX API
+managers already have both. The Rate Monotonic Manager is a complete example to
+study:
+
+- `cpukit/include/rtems/rtems/ratemon.h` defines the API group once with
+  `@defgroup RTEMSAPIClassicRatemon`, then tags each public function and type
+  individually with `@ingroup RTEMSAPIClassicRatemon`.
+
+- `cpukit/include/rtems/rtems/ratemonimpl.h` defines the implementation group
+  with `@defgroup RTEMSImplClassicRateMonotonic`, and wraps every declaration
+  that belongs to it between `@@{` and `@}` so the declarations do not each
+  need their own `@ingroup`:
+
+  ```{raw} latex
+  \begin{footnotesize}
+  ```
+
+  ```{code-block} c
+  ---
+  linenos:
+  ---
+  /**
+   * @defgroup RTEMSImplClassicRateMonotonic Rate Monotonic Manager
+   *
+   * @ingroup RTEMSImplClassic
+   *
+   * @brief This group contains the Rate Monotonic Manager implementation.
+   *
+   * @@{
+   */
+
+  /* ... declarations belonging to the group ... */
+
+  /**@}*/
+  ```
+
+  ```{raw} latex
+  \end{footnotesize}
+  ```
+
+- Every `.c` file that implements part of the manager, for example
+  `cpukit/rtems/src/ratemoncreate.c`, cannot be nested inside that `@@{ @}`
+  block, so it tags itself with `@ingroup RTEMSImplClassicRateMonotonic` in its
+  own `@file` doc comment instead.
+
+If no group exists yet for your functions, add one the same way: pick an
+identifier that follows the pattern of its neighbours, give it a `@brief`, and
+`@ingroup` it under the closest existing parent group. Use `@ref <GroupID>` to
+refer to a group from surrounding prose, as `ratemonimpl.h` does in its own
+file brief.
+
+The naming pattern differs by branch. For the Classic API, as in the example
+above, it is `RTEMSAPI...` for an API group and `RTEMSImpl...` for an
+implementation group. The Score branch nests directly under `RTEMSImpl` without
+its own `RTEMSImpl` prefix, for example `RTEMSScore` for the SuperCore
+(`cpukit/include/rtems/score/object.h`). POSIX has a naming scheme of its own
+again, for example `POSIXAPI` and `POSIXSemaphorePrivate`, or
+`RTEMSAPICAndPOSIX` for declarations shared between the Classic and POSIX APIs.
+
+Choose the identifier carefully: a later step in this workflow creates a
+requirement item that names the implementation group as its `identifier`, for
+example `spec/rtems/ratemon/req/group.yml` for `RTEMSImplClassicRateMonotonic`.
+That item must reuse the exact identifier chosen here.
 
 ## Add a function to the pre-qualified subset
 
-We will prepare this for you.
+Whether a `.c` or `.h` file is compiled into the pre-qualified subset or into
+full, unqualified RTEMS is decided entirely by which specification item lists
+it, not by anything in the file itself. The `RTEMS_QUAL` build option selects
+between the two, set to `True` in the @`/glossary/bsp:/term` variant's section
+(for example, `[sparc/leon3]`) of the `config.ini` file passed to
+`./waf configure`: when it is enabled, only files that are listed
+unconditionally are built; when it is disabled, those files are built together
+with everything else. A file listed in an item whose `enabled-by` attribute
+negates `RTEMS_QUAL` is therefore only built for full, unqualified RTEMS and is
+not, or not yet, part of the pre-qualified subset; a file listed without that
+condition is always built and is part of it.
 
-TODO
+For `cpukit`, this split is visible in a pair of specification items:
+
+- `spec/build/cpukit/librtemscpu.yml` defines the content of the library
+  `librtemscpu.a`, and lists, unconditionally, the source and header files that
+  belong to the pre-qualified subset. It also links, as `build-dependency`, to
+  a number of smaller items for optional features that contribute further
+  object files to the same library; some of those are unconditional too, and
+  some are split the same way as `cpukit` itself.
+
+- `spec/build/cpukit/objextra.yml` lists everything not, or not yet, part of
+  the pre-qualified subset, guarded by an `enabled-by` attribute that negates
+  `RTEMS_QUAL`. A feature can keep its own, smaller such item instead of using
+  `objextra.yml` directly; for example, `spec/build/cpukit/objsmpextra.yml`
+  holds the SMP support files that are not yet pre-qualified, guarded the same
+  way, and is a `build-dependency` of `spec/build/cpukit/objsmp.yml`, which
+  holds the SMP support files that already are.
+
+Since a publicly visible RTEMS function usually has its own `.c` file, adding
+it to the pre-qualified subset is usually just moving its one `source:` entry
+from `objextra.yml`, or the matching feature-specific item, to
+`librtemscpu.yml`, keeping the list in alphabetical order like its neighbours.
+If the function's declaration is not installed unconditionally yet either, move
+the matching `install:` entry the same way. For example,
+`cpukit/rtems/src/taskinitusers.c` moved from `objextra.yml`'s `source:` list
+to `librtemscpu.yml`'s in a single-line change.
+
+Two complications can turn this into more than a one-line move:
+
+1. **A file mixes pre-qualified and not-yet-pre-qualified code.** A whole file
+   can only be built or excluded as a unit, so such a file must be split, or
+   handled some other way, before any of it can be moved. If in doubt, ask us
+   (embedded brains).
+
+2. **The function calls into a file that is not yet in the subset.** This
+   typically happens when an API function in `cpukit/rtems/src` calls a helper
+   function implemented in `cpukit/score`, the Score (Super Core), that has not
+   been pre-qualified yet. In that case, move all of the files involved
+   together, and all of them must eventually be pre-qualified as well. For
+   example, the Rate Monotonic Manager statistics functions
+   `cpukit/rtems/src/ratemongetstatistics.c`,
+   `cpukit/rtems/src/ratemonreportstatistics.c`,
+   `cpukit/rtems/src/ratemonresetall.c`, and
+   `cpukit/rtems/src/ratemonresetstatistics.c` moved into `librtemscpu.yml`
+   together with `cpukit/score/src/timespecdividebyinteger.c`, since
+   `ratemonreportstatistics.c` calls `_Timespec_Divide_by_integer()`.
+
+To find out where a `.c` or `.h` file currently lives, search for its name
+across the whole build specification:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+$ grep -rl taskinitusers.c spec/build
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ## Create a specification directory tree
 
-We will prepare this for you.
+For the function group you are pre-qualifying, create a specification directory
+tree of `.yml` files under `spec/rtems`, named after the group, for example
+`spec/rtems/ratemon` for the Rate Monotonic Manager used as the running example
+throughout this chapter. At this point, only create the next directory level
+down, as empty directories; the sections that follow fill them with content.
 
-TODO
-
-```{admonition} Content of spec-directory
-(for example `spec/rtems/ratemon/*`)
-TODO
+```{raw} latex
+\begin{footnotesize}
 ```
+
+```{code-block} none
+---
+linenos:
+---
+$ mkdir -p spec/rtems/$${MY_GROUP}/if spec/rtems/$${MY_GROUP}/req \
+    spec/rtems/$${MY_GROUP}/val
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Only `if/`, `req/`, and `val/` are mandatory: every group needs at least an
+interface, a requirement, and a validation test. `constraint/` and `glossary/`
+are optional; add them only when you need them.
+
+````{admonition} Directory tree of a fully pre-qualified group
+`spec/rtems/ratemon` already went through every step of this workflow.
+Shortened to a few representative files, it looks like this:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+spec/rtems/ratemon/
+├── constraint/
+│   └── max.yml
+├── glossary/
+│   ├── job.yml
+│   ├── ownertask.yml
+│   └── ... (14 more terms)
+├── if/
+│   ├── header.yml
+│   ├── create.yml
+│   ├── period.yml
+│   └── ... (18 more interface items)
+├── req/
+│   ├── group.yml
+│   ├── create.yml
+│   ├── ident.yml
+│   ├── timeout.yml
+│   └── ... (11 more requirements)
+└── val/
+    ├── ident.yml
+    ├── mem-period.yml
+    ├── mem-period-del.yml
+    └── ratemon.yml
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+````
+
+- **`if/`** holds interface items: one @`/glossary/yaml:/term` file per
+  publicly visible function, macro, type, or enumerator, plus one for the
+  header file itself. See {ref}`InterfaceItems`.
+
+- **`req/`** holds requirement items, see {ref}`QualEngWriteRequirements`. Most
+  are *action requirements*: a requirement broken into pre-conditions and
+  post-conditions with a transition-map relating them, from which the C test
+  file and most of its test logic are generated automatically; see
+  {ref}`ActionRequirements`. A requirement can instead be a short, simple
+  requirement text whose test is written by hand in `val/`, or a non-functional
+  requirement, like the Doxygen implementation group requirement added earlier
+  in this chapter or a memory-usage benchmark.
+
+- **`val/`** holds the hand-written tests for simple requirements and the
+  memory-usage benchmarks for non-functional requirements in `req/`. Action
+  requirements do not need a file here: their test code already lives inside
+  the `req/` item itself and is generated from it. See
+  {ref}`QualEngWriteSimpleValidationTests`.
+
+- **`constraint/`** holds short, reusable statements of a usage constraint, for
+  example a configurable maximum, that an interface item in `if/` can reference
+  through a `constraint` link.
+
+- **`glossary/`** holds short definitions of terms specific to this group,
+  referenced from `req/` and other texts the same way as the project-wide
+  glossary, for example `$${../glossary/job:/term}`.
 
 ## Create interface specifications
 
 See {ref}`InterfaceItems`, which walks through writing an interface
 specification item from scratch.
+
+(QualEngWriteRequirements)=
 
 ## Write requirements
 
@@ -192,7 +435,7 @@ action requirements are broken into pre-conditions and post-conditions, the
 requirement texts are also broken apart. The *when*, *while*, *if*, *where*
 parts appear in the pre-conditions while the *\<system name> shall \<system
 response>* parts appear in the post-conditions. See {ref}`ActionRequirements`
-for the concrete YAML mechanics behind this split.
+for the concrete @`/glossary/yaml:/term` mechanics behind this split.
 
 (QualEngWhereTextAppears)=
 
@@ -212,6 +455,8 @@ Unit and Integration Test Plan (SUITP), Software Validation Specification
 the action requirement case.
 ```
 
+(QualEngWriteSimpleValidationTests)=
+
 ## Write simple validation tests
 
 Follow the examples. Each test has an *action* part which contains the C code
@@ -220,7 +465,7 @@ expected result(s). Each of these sections has a brief description. Moreover,
 each such *check* part has a *links* part which links the check to one or
 several requirements. In the end, all requirements must have at least one test.
 
-Note that at the bottom of such a YAML file, are keys like
+Note that at the bottom of such a @`/glossary/yaml:/term` file, are keys like
 
 - `test-brief` to describe the whole test case,
 - `test-includes` to define header files to be included,
@@ -240,12 +485,46 @@ The RTEMS coding rules apply, see
 [*RTEMS Software Engineering Manual* chapter *Coding Standards*](https://docs.rtems.org/docs/main/eng/coding.html#coding-standards).
 
 ```{admonition} Unit vs. validation tests
+Most projects have both *unit tests* and *validation tests*, and use them for
+different purposes.
 
-TODO: Code coverage, Unit vs. Validation Tests / White box vs. Black box tests
+Unit tests are white box, or glass box, tests: the programmer who wrote the
+code under test can see its source and writes the test to match. They check
+that the code does what the programmer intended, not what a requirement
+says, so requirements play no role in them. Modules are usually tested in
+isolation with the help of mocks, and unit tests are also the usual means to
+reach code coverage goals.
 
-TODO: Testing happens only on API level – no units with mocks,
-In some cases tests manipulate RTEMS internal data structures to stimulate
-tests.
+Validation tests are black box tests: written by someone who was not
+involved in producing the code under test and does not look at its source,
+strictly against the requirements, with one or several tests for each
+requirement. This checks that the code actually implements the
+requirements, and that the requirements were not misinterpreted by the
+original programmer.
+
+RTEMS pre-qualification has almost only validation tests instead. They
+still strictly check the requirements, but they are white box tests like
+unit tests, and, since RTEMS has no unit tests, they are also what has to
+reach the code coverage goals, see {ref}`CreateCoverageReport`. With rare
+exceptions, they exercise the public API only, for the following reasons:
+
+- The RTEMS project has always tested at the API level, even for tests
+  that target an internal implementation function.
+- RTEMS traditionally has no mocks for tests and is not prepared to
+  support them.
+- For an operating system, testing every unit in isolation runs into
+  difficulties: some units change the state of the processor at the
+  register level, which makes mocking difficult.
+- RTEMS has no deep function call hierarchies, and internal states are
+  usually independent of each other, so most code can be reached through
+  the API alone.
+- Without unit tests, the validation tests are what has to meet the code
+  coverage goals.
+
+Some validation tests directly manipulate RTEMS internal data structures to
+set up the scenario a requirement describes. This does not turn them into
+unit tests: the check itself still goes through the public API, against the
+requirement, not against the implementation.
 ```
 
 ## Write action requirements
@@ -264,19 +543,108 @@ invokes the `specwareexport` tool internally, see {ref}`ToolSpecwareexport`.
 
 ## Add test cases to test suites
 
-TODO
+A generated validation test case is not built or run until its `.c` file is
+added to the `source:` list of a test-program build item under
+`spec/build/testsuites/validation`; see the
+{ref}`examples in the overview <QualEngOverviewExamples>`. For example, after
+working through {ref}`ActionRequirements`,
+`testsuites/validation/tc-timer-create.c` exists but is not yet part of any
+suite. Adding it to the `source:` list of
+`spec/build/testsuites/validation/validation-no-clock-0.yml`, next to the other
+`tc-timer-*.c` entries, is what actually compiles and runs it:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+- testsuites/validation/tc-timer-create.c
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ```{admonition} Selecting the right Validation Test Suite
 Not all test cases of a function group need to be part of the same test
 suite. It depends on the requirements a particular test has on the
 executable. For example, a test may require the usual clock ticks, others
 may require no clock to "manually" trigger the clock tick as part of the test
-execution, others may need exactly one CPU, others at least three.
+execution, others may need exactly one @`/glossary/cpu:/term`, others at least three.
 ```
 
 ## Create a test suite
 
-TODO
+Create a new test suite only when none of the existing ones give the test
+executable the resources, or restrictions, it needs, see the admonition above.
+A test suite is defined by a pair of specification items that share the same
+name, for example `validation-one-cpu-0`:
+
+- `spec/testsuites/$${MY_SUITE}.yml` (`type: test-suite`) generates the suite's
+  main C file, named by its `test-target` attribute,
+  `testsuites/validation/ts-$${MY_SUITE}.c`. Its `test-code` attribute is a
+  short `main`-like body: a handful of `#define CONFIGURE_...` options followed
+  by `#include "ts-default.h"`. For example, both
+  `spec/testsuites/validation-no-clock-0.yml` and
+  `spec/testsuites/validation-one-cpu-0.yml` define
+  `CONFIGURE_APPLICATION_DOES_NOT_NEED_CLOCK_DRIVER` and set
+  `CONFIGURE_MAXIMUM_PROCESSORS`, to `5` and `1` respectively; besides
+  `test-brief`, `test-description`, and `test-target`, that is the only
+  difference between the two items.
+
+- `spec/build/testsuites/validation/$${MY_SUITE}.yml`
+  (`build-type: test-program`) is the matching build item. Its `source:` list
+  initially contains only the generated `ts-$${MY_SUITE}.c`; add test case
+  files to it the same way as in the previous section. Its `target` attribute
+  names the executable, `testsuites/validation/ts-$${MY_SUITE}.exe`.
+
+The easiest way to create both is to copy an existing pair, then adjust the
+copies:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+$ cp spec/testsuites/validation-no-clock-0.yml \
+    spec/testsuites/$${MY_SUITE}.yml
+$ cp spec/build/testsuites/validation/validation-no-clock-0.yml \
+    spec/build/testsuites/validation/$${MY_SUITE}.yml
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Adjust the `test-target`, `test-brief`, `test-description`, and `#define` lines
+in `spec/testsuites/$${MY_SUITE}.yml`, and adjust the `target` attribute and
+clear the `source:` list in `spec/build/testsuites/validation/$${MY_SUITE}.yml`
+down to only the generated `ts-$${MY_SUITE}.c`.
+
+A new suite is not built until it is linked in as a `build-dependency` of
+`spec/build/testsuites/validation/grp.yml`:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+- role: build-dependency
+  uid: $${MY_SUITE}
+```
+
+```{raw} latex
+\end{footnotesize}
+```
 
 ## Compile and run the tests
 
@@ -313,7 +681,7 @@ you have committed all your changes.
    ---
    linenos:
    ---
-   $ git push -u origin $${my-new-branch-name}
+   $ git push -u origin $${MY_NEW_BRANCH_NAME}
    ```
 
    ```{raw} latex
