@@ -1,0 +1,13 @@
+SPDX-License-Identifier: CC-BY-SA-4.0 OR BSD-2-Clause
+author: NASA
+copyrights:
+- Copyright (C) 2026 embedded brains GmbH & Co. KG
+enabled-by: true
+links: []
+organization: NASA
+reference-type: manual
+title: NASA-STD-8739.8, Software Assurance and Software Safety Standard
+type: reference
+work-hash: null
+work-url: https://standards.nasa.gov/standard/nasa/nasa-std-87398
+year: '2022'

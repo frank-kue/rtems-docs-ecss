@@ -2,6 +2,8 @@
 
 % Copyright (C) 2026 embedded brains GmbH & Co. KG
 
+(QualificationEngineering)=
+
 # Qualification engineering
 
 ## Overview
@@ -240,6 +242,8 @@ Choose the identifier carefully: a later step in this workflow creates a
 requirement item that names the implementation group as its `identifier`, for
 example `spec/rtems/ratemon/req/group.yml` for `RTEMSImplClassicRateMonotonic`.
 That item must reuse the exact identifier chosen here.
+
+(QualEngAddFunction)=
 
 ## Add a function to the pre-qualified subset
 

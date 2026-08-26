@@ -2,6 +2,8 @@
 
 % Copyright (C) 2026 embedded brains GmbH & Co. KG
 
+(DocumentationGuidelines)=
+
 # Documentation guidelines
 
 This document describes how to write and format documentation within the RTEMS
