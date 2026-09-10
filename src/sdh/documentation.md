@@ -342,6 +342,8 @@ section cross-reference instead, since it resolves the anchor at build time and
 fails the build if the target no longer exists, rather than producing a
 silently dead link.
 
+(GlossaryReferencesAndTerms)=
+
 ### Glossary references and terms
 
 A glossary term reference has two effects. First, it adds the term to the

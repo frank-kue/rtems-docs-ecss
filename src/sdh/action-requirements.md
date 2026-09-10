@@ -175,12 +175,97 @@ return value are not yet the real states -- those come from Steps 3 and 4
 below. Everything from here on is about turning this skeleton into a correct
 specification.
 
+(ActionRequirementsStep2)=
+
 ## Step 2: read the implementation
 
-Do not guess at behavior from the interface item's prose alone. Find and read
-the actual C implementation, quoted below verbatim from
-`cpukit/rtems/src/timercreate.c`; see the
-[RTEMS license](https://www.rtems.org/license/) for the terms that apply to it:
+A directive's pre-conditions and post-conditions come from two sources. Get all
+of them right. Full code coverage depends on it: a missing pre-condition or
+post-condition state leaves part of the implementation untested. The
+documentation gives a first, partial set of pre-conditions and post-conditions.
+The implementation then completes that set.
+
+Look at the header file, the generated documentation, or the interface item
+before you open the implementation. The header file
+`cpukit/include/rtems/rtems/timer.h` declares `rtems_timer_create()` as
+follows, together with its Doxygen comment. See the
+[RTEMS license](https://www.rtems.org/license/) for the terms that apply to it,
+and to every other RTEMS source quoted in this section.
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} c
+---
+linenos:
+---
+/**
+ * @ingroup RTEMSAPIClassicTimer
+ *
+ * @brief Creates a timer.
+ *
+ * @param name is the object name of the timer.
+ *
+ * @param[out] id is the pointer to an ::rtems_id object.  When the directive
+ *   call is successful, the identifier of the created timer will be stored in
+ *   this object.
+ *
+ * This directive creates a timer which resides on the local node.  The timer
+ * has the user-defined object name specified in ``name``.  The assigned object
+ * identifier is returned in ``id``.  This identifier is used to access the
+ * timer with other timer related directives.
+ *
+ * @retval ::RTEMS_SUCCESSFUL The requested operation was successful.
+ *
+ * @retval ::RTEMS_INVALID_NAME The ``name`` parameter was invalid.
+ *
+ * @retval ::RTEMS_INVALID_ADDRESS The ``id`` parameter was NULL.
+ *
+ * @retval ::RTEMS_TOO_MANY There was no inactive object available to create a
+ *   timer.  The number of timers available to the application is configured
+ *   through the @ref CONFIGURE_MAXIMUM_TIMERS application configuration
+ *   option.
+ *
+ * @par Notes
+ * @parblock
+ * The processor used to maintain the timer is the processor of the calling
+ * task at some point during the timer creation.
+ *
+ * For control and maintenance of the timer, RTEMS allocates a TMCB from the
+ * local TMCB free pool and initializes it.
+ * @endparblock
+ *
+ * @par Constraints
+ * @parblock
+ * The following constraints apply to this directive:
+ *
+ * - The directive may be called from within device driver initialization
+ *   context.
+ *
+ * - The directive may be called from within task context.
+ *
+ * - The directive may obtain and release the object allocator mutex.  This may
+ *   cause the calling task to be preempted.
+ *
+ * - The number of timers available to the application is configured through
+ *   the @ref CONFIGURE_MAXIMUM_TIMERS application configuration option.
+ *
+ * - Where the object class corresponding to the directive is configured to use
+ *   unlimited objects, the directive may allocate memory from the RTEMS
+ *   Workspace.
+ * @endparblock
+ */
+rtems_status_code rtems_timer_create( rtems_name name, rtems_id *id );
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Do not guess at behavior from the interface item's prose alone. Read the actual
+C implementation next, quoted below verbatim from
+`cpukit/rtems/src/timercreate.c`:
 
 ```{raw} latex
 \begin{footnotesize}
@@ -224,7 +309,7 @@ rtems_status_code rtems_timer_create( rtems_name name, rtems_id *id )
 
 Four branches, checked in this order: an invalid `name`, a `NULL` `id`, no free
 timer object available, and otherwise success. This is exactly the kind of
-black-box inspection that determines your pre-conditions and post-conditions --
+white-box inspection that determines your pre-conditions and post-conditions --
 for a function this small, the implementation *is* the specification.
 
 ## Step 3: derive the pre-conditions
@@ -322,6 +407,38 @@ convention:
 - The set of states of one pre-condition must be pairwise disjoint -- a given
   system state must map to exactly one state of each pre-condition, never zero
   and never more than one.
+
+````{admonition} Helper functions for the C code
+The pre-condition `Free`, state `No`, needs every free timer object seized.
+The call `T_seize_objects( Create, NULL )` above does this. It is declared in
+`cpukit/include/rtems/test.h`.
+
+The matching `test-cleanup` attribute must give every seized object back:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} c
+---
+linenos:
+---
+T_surrender_objects( &ctx->seized_objects, rtems_timer_delete );
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+`test-cleanup`, `test-setup`, `test-teardown`, `test-prepare`, and
+`test-support` are described in the *Software Test Framework* chapter of the
+@`/ref/rtems/eng:/cite-long`.
+
+Do not repeat the same helper function in several `req/*.yml` files. Define
+it once in a local C file instead. `spec/rtems/timer/req/create.yml` already
+does this: its `test-local-includes` key references the shared
+`tx-support.h`/`tx-support.c` pair.
+````
 
 ## Step 4: derive the post-conditions, and keep them separate
 
@@ -512,6 +629,14 @@ linenos:
 
 ```{raw} latex
 \end{footnotesize}
+```
+
+```{admonition} What N/A means in the table
+The post-condition `IdObj` is `N/A` whenever the pre-condition `Id` is
+`Null`. No object exists in that case, so no requirement applies to `IdObj`.
+Since no requirement applies, no test checks `IdObj` either. The generated
+test therefore skips the check code for `IdObj` on every row where `N/A`
+applies.
 ```
 
 You could write this out as eight explicit transition-map descriptors, one per
@@ -978,3 +1103,300 @@ With both the interface item and its action requirement in place, linked
 together and validated, you have produced the complete functional specification
 for the directive: the ICD content from {ref}`InterfaceItems`, and the SRS
 content from this chapter.
+
+(ActionRequirementsReuse)=
+
+## Reuse a test from another item
+
+This is an advanced topic. This section shows how to call an existing test from
+a new action requirement.
+
+RTEMS implements many mechanisms once, in its SuperCore. A directive is often a
+thin wrapper around a SuperCore object, for example a SuperCore mutex, a
+SuperCore semaphore, or a SuperCore thread queue. An action requirement for
+such an object usually already exists.
+
+A new test for a directive that is based on such a SuperCore object can simply
+reuse the existing action requirement's test. There is no need to define the
+requirement and implement the test again, especially as these SuperCore tests
+are often complex.
+
+### An example across three layers
+
+The following example spans the SuperCore, the Classic API, and the newlib API.
+
+```{figure} ../images/spec-item-test-reuse.*
+---
+alt: Five items across three layers, linked by test-run and other roles
+width: 70%
+---
+Reuse across the SuperCore, the Classic API, and the newlib API
+```
+
+The table below lists every file in the example.
+
+```{eval-rst}
+.. table::
+    :class: longtable
+    :widths: 29,16,41,14
+
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+    | File                                   | Type                  | Role in the example                                     | Generated test file |
+    +========================================+=======================+=========================================================+=====================+
+    | score/tq/req/surrender.yml             | requirement, action   | SuperCore thread queue behaviour, reused below          | tr-tq-surrender.c   |
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+    | score/sem/req/surrender.yml            | requirement, action   | SuperCore semaphore behaviour, reuses the thread queue  | tr-sem-surrender.c  |
+    |                                        |                       | test                                                    |                     |
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+    | rtems/sem/req/release.yml              | requirement, action   | Classic API directive, reuses the semaphore test        | tc-sem-release.c    |
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+    | newlib/req/sys-lock-semaphore-post.yml | requirement, function | Newlib API directive, no test of its own                | none                |
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+    | newlib/val/sys-lock.yml                | test-case             | Validates the newlib directive, reuses the semaphore    | tc-sys-lock.c       |
+    |                                        |                       | test                                                    |                     |
+    +----------------------------------------+-----------------------+---------------------------------------------------------+---------------------+
+```
+
+`score/tq/req/surrender` specifies the dequeue and unblock behaviour of a
+SuperCore thread queue. `score/sem/req/surrender` specifies the count and
+status behaviour of a SuperCore semaphore. It reuses the thread queue test for
+the dequeue behaviour.
+
+Two directives reuse the test of `score/sem/req/surrender` in turn.
+`rtems/sem/req/release` covers the Classic API directive
+`rtems_semaphore_release()`. `newlib/req/sys-lock-semaphore-post` covers the
+newlib directive `_Semaphore_Post()`. Its validation test is in
+`newlib/val/sys-lock`.
+
+### Invoke another item's test
+
+The item `newlib/req/sys-lock-semaphore-post` contains only the requirement
+text. The following excerpt is from the real item. See the
+[RTEMS license](https://www.rtems.org/license/) for the terms that apply to it,
+and to every other RTEMS source quoted in this section.
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} yaml
+---
+linenos:
+---
+links:
+- role: interface-function
+  uid: ../if/sys-lock-semaphore-post
+- role: function-implementation
+  uid: /score/sem/req/surrender
+- role: requirement-refinement
+  uid: sys-lock
+# ...
+text: |
+  The $${../if/sys-lock-semaphore-post:/name} directive shall surrender the
+  counting modulo semaphore as specified by
+  $${/score/sem/req/surrender:/spec}.
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+The `function-implementation` link points at the SuperCore item whose behaviour
+the newlib directive shares. The `:spec` path in the `text` attribute returns
+the full rendered requirement text of that item, so the requirement text above
+avoids repetition.
+
+Every requirement must have a test that validates it. For the requirement-only
+item `newlib/req/sys-lock-semaphore-post`, that test is a check in
+`newlib/val/sys-lock`, a specification item of type `test-case`. One of its
+checks validates the directive:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} yaml
+---
+linenos:
+---
+- brief: |
+    Validate the $${../if/sys-lock-semaphore-post:/name} directive.
+  code: |
+    ctx->tq_sem_ctx.base.surrender = SemaphorePost;
+    ctx->tq_sem_ctx.base.wait = TQ_WAIT_FOREVER;
+    ctx->tq_sem_ctx.variant = TQ_SEM_COUNTING_MODULO;
+    SemaphoreSetCount( &ctx->tq_sem_ctx, 1 );
+    $${/score/sem/req/surrender:/test-run}( &ctx->tq_sem_ctx );
+  links:
+  - role: validation
+    uid: ../req/sys-lock-semaphore-post
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+The `role: validation` link marks this check as the test for
+`newlib/req/sys-lock-semaphore-post`. The check's own `code` sets up a
+`TQSemContext` for a counting modulo semaphore, and calls
+`$${/score/sem/req/surrender:/test-run}( &ctx->tq_sem_ctx )`. The call runs the
+whole SuperCore test. That test calls `_Semaphore_Post()` through a function
+pointer stored in `TQSemContext`.
+
+The substitution `$${<uid>:/test-run}( <args> )` calls an action requirement's
+generated test function. This function exists only for an item whose
+`test-header` attribute is not null. Such an item does not generate a
+standalone test. It generates a test meant for other tests to call, together
+with a C header file named by the `target` attribute. The `run-params`
+attribute lists the parameters of the generated function. The relevant part of
+`score/sem/req/surrender`:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} yaml
+---
+linenos:
+---
+test-header:
+  run-params:
+  - description: |
+      is the thread queue context.
+    dir: inout
+    name: tq_ctx
+    specifier: TQSemContext *$${.:name}
+  target: testsuites/validation/tr-sem-surrender.h
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+The generated function takes one parameter, `tq_ctx`, of type `TQSemContext *`.
+This is why the check above prepares a `TQSemContext` before it calls
+`$${<uid>:/test-run}`.
+
+### Invoke another item's test from an action requirement
+
+`rtems/sem/req/release` is a full action requirement, with its own
+pre-conditions, post-conditions, and transition-map for
+`rtems_semaphore_release()`. It reuses `score/sem/req/surrender` inside one of
+its own post-condition states:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} yaml
+---
+linenos:
+---
+- name: BinarySurrender
+  test-code: |
+    ctx->tq_ctx.enqueue_variant = TQ_ENQUEUE_BLOCKS;
+    ctx->tq_ctx.get_owner = NULL;
+    ctx->tq_sem_ctx.variant = TQ_SEM_BINARY;
+    ctx->tq_sem_ctx.get_count = TQSemGetCountClassic;
+    ctx->tq_sem_ctx.set_count = TQSemSetCountClassic;
+    $${/score/sem/req/surrender:/test-run}( &ctx->tq_sem_ctx );
+  text: |
+    The calling task shall surrender the binary semaphore as specified by
+    $${/score/sem/req/surrender:/spec}.
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+`rtems_semaphore_release()` uses more than one SuperCore mechanism: a SuperCore
+mutex and a SuperCore semaphore. `rtems/sem/req/release` therefore carries two
+`function-implementation` links, one to `score/sem/req/surrender` and one to
+`score/mtx/req/surrender`. Each post-condition state reuses whichever SuperCore
+item matches its pre-conditions.
+
+The figure and the table leave `score/mtx/req/surrender` out. This example
+follows only the semaphore path.
+
+The context `ctx->tq_sem_ctx` is of type `TQSemContext`, the same type
+`score/sem/req/surrender` expects. Before the `BinarySurrender` state calls
+`$${/score/sem/req/surrender:/test-run}( &ctx->tq_sem_ctx )`, it assigns
+`TQSemGetCountClassic` and `TQSemSetCountClassic` to two function pointers
+inside that context:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} c
+---
+linenos:
+---
+typedef struct TQSemContext {
+  TQContext base;
+  TQSemVariant variant;
+  uint32_t ( *get_count )( struct TQSemContext * );
+  void ( *set_count )( struct TQSemContext *, uint32_t );
+} TQSemContext;
+```
+
+```{raw} latex
+\end{footnotesize}
+```
+
+Through this function pointer pair the test can run against a Classic API
+semaphore, a POSIX semaphore, or a newlib semaphore. Each caller assigns its
+own pair of adapter functions before it calls `...:/test-run`. The adapter
+functions, together with `TQSemContext` and the other context types, live in a
+shared header, `testsuites/validation/tx-thread-queue.h`, and its matching
+source file.
+
+### Naming conventions
+
+A file name that starts with `tr-` holds a reusable test. Its item has a
+`test-header` attribute, and another item calls it through `...:/test-run`.
+
+A file name that starts with `tc-` holds a top-level test case. A `tc-` item
+can call a lower-level `tr-` test, as `rtems/sem/req/release` does for
+`score/sem/req/surrender`.
+
+### Reuse a test in your own item
+
+1. Find the item to reuse. Search for `run-params`, as shown below, or follow a
+   `function-implementation` link from a similar item.
+2. Read the item's `test-header` attribute. It gives the parameter list of the
+   generated `...:/test-run` function, and the header that declares it.
+3. Decide whether your new item needs its own transition-map, or whether a
+   simple reuse is enough, as `newlib/req/sys-lock-semaphore-post` does.
+4. For a simple reuse:
+   1. Add a `function-implementation` link to the requirement item. Write a
+      `text` that reads `... as specified by $${<uid>:/spec}`.
+   2. Extend or create a validation test item below `val/`. Add the reused
+      item's `test-header` filename to its `test-local-includes`. Add a check
+      with a `role: validation` link to it. Prepare the parameters in the
+      check's `code`, and call `$${<uid>:/test-run}` from the same code.
+5. For your own transition-map:
+   1. Prepare the parameters the reused item expects, inside the relevant
+      post-condition's `test-code`.
+   2. Call `$${<uid>:/test-run}` with those parameters. Add the reused item's
+      `test-header` target header to your `test-local-includes`.
+6. Format and validate the item, as in {ref}`Step 7 <ActionRequirementsStep7>`.
+
+### List the reusable tests
+
+Search for every item with a reusable test by its `run-params` attribute:
+
+```{raw} latex
+\begin{footnotesize}
+```
+
+```{code-block} none
+---
+linenos:
+---
+$ grep -rl "run-params:" --include=*.yml spec
+```
+
+```{raw} latex
+\end{footnotesize}
+```

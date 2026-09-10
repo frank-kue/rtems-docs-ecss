@@ -418,7 +418,10 @@ spec/rtems/ratemon/
 
 - **`glossary/`** holds short definitions of terms specific to this group,
   referenced from `req/` and other texts the same way as the project-wide
-  glossary, for example `$${../glossary/job:/term}`.
+  glossary, for example `$${../glossary/job:/term}`. The *Rate Monotonic
+  Manager* specification in `spec/rtems/ratemon/glossary` is a good example of
+  a local glossary in use. See {ref}`GlossaryReferencesAndTerms` for more
+  details.
 
 ## Create interface specifications
 
@@ -751,3 +754,20 @@ you have committed all your changes.
    Once all issues found by the CI jobs and *GitHub Copilot* are resolved,
    remove the *draft* status. The embedded brains staff will review your pull
    request and merge it.
+
+## Report a bug
+
+In case you find a bug, report it to the repository that matches its origin.
+
+- **RTEMS bugs** Report a bug in RTEMS itself to the
+  [RTEMS repository](https://gitlab.rtems.org/rtems/rtos/rtems/-/work_items) on
+  RTEMS.org.
+
+- **Specware bugs** Report a bug in a Specware tool to the
+  [Specware repository](https://github.com/specthings/specware/issues) on
+  GitHub.
+
+- **Pre-qualification bugs** Report a bug in the pre-qualification itself to
+  the
+  [rtems-package repository](https://github.com/embedded-brains/rtems-package)
+  on GitHub.
